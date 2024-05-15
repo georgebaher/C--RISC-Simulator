@@ -20,19 +20,19 @@
 struct register_file
 {
     char reg[64]; // 8 bits per register (0-63)
-    char serg;    // 000CVNSZ
+    char sreg;    // 000CVNSZ
     short pc;     // 16 bits -> 65536 addresses
 };
 
 struct decoded_instruction
 {
-    short instruction; // 16 bits
-    char opcode;       // 4 bits
-    char r1_address;   // 6 bits
-    char r2_address;   // 6 bits
-    char imm;          // 6 bits
-    char r1_value;     // 8 bits
-    char r2_value;     // 8 bits
+    short instruction;       // 16 bits
+    char opcode;             // 4 bits
+    char r1_address;         // 6 bits
+    char r2_address;         // 6 bits
+    char imm;                // 6 bits
+    char r1_value;           // 8 bits
+    char r2_value;           // 8 bits
     short pc_val_for_branch; // 16 bits
 };
 
@@ -49,22 +49,24 @@ int clock_cycles = 1;
 struct previous_clock_cycle previous_clock_cycle;
 bool end = false;
 
-void print_flags(char serg)
+void print_flags(char sreg)
 {
     bool C, V, N, S, Z;
-    C = serg & 0b00010000;
-    V = serg & 0b00001000;
-    N = serg & 0b00000100;
-    S = serg & 0b00000010;
-    Z = serg & 0b00000001;
+    C = sreg & 0b00010000;
+    V = sreg & 0b00001000;
+    N = sreg & 0b00000100;
+    S = sreg & 0b00000010;
+    Z = sreg & 0b00000001;
     printf("C=%d, V=%d, N=%d, S=%d, Z=%d\n", C, V, N, S, Z);
 }
 
-void print_instruction(short instruction)
+void print_instruction(short pc)
 {
-    printf("opcode=%d, ", (instruction & 0xF000) >> 12);
-    printf("r1=%d, ", (instruction & 0x0FC0) >> 6);
-    printf("r2/imm=%d\n", instruction & 0x003F);
+    short instruction = instruction_memory[pc];
+    printf("#%d \n", pc+1);
+    // printf("opcode=%d, ", (instruction & 0xF000) >> 12);
+    // printf("r1=%d, ", (instruction & 0x0FC0) >> 6);
+    // printf("r2/imm=%d\n", instruction & 0x003F);
 }
 
 char str_opcode_to_char(char *op)
@@ -138,7 +140,7 @@ int parse_program_file_to_inst_mem()
         printf("Error: could not open file %s", filename);
         return 1;
     }
-    // reading line by line, max 256 bytes
+    // reading line by line, max 256
     int MAX_LENGTH = 256;
     char buffer[MAX_LENGTH];
 
@@ -181,16 +183,18 @@ int parse_program_file_to_inst_mem()
 short fetch()
 {
     short instruction = instruction_memory[register_file.pc++];
-    printf("Instruction fetched:\n");
-    print_instruction(instruction);
+    printf("Instruction fetched: ");
+    print_instruction(register_file.pc-1);
+    // print pc
+    printf(">>>> PC incremented to: %d\n", register_file.pc);
     return instruction;
 }
 
 struct decoded_instruction decode(short instruction)
 {
     struct decoded_instruction current_instruction;
-    printf("Instruction decoded:\n");
-    print_instruction(instruction);
+    printf("Instruction decoded: ");
+    print_instruction(register_file.pc-1);
     current_instruction.instruction = instruction;
     current_instruction.opcode = (instruction >> 12) & 0xF;
     if (current_instruction.opcode == 15)
@@ -209,37 +213,37 @@ void add(char r1, char r2, char rd)
     short tmp = r1 + r2;
     // update carry flag 000C0000
     if ((tmp & 0b100000000) != 0)
-        register_file.serg = register_file.serg | 0b00010000;
+        register_file.sreg = register_file.sreg | 0b00010000;
     else
-        register_file.serg = register_file.serg & 0b11101111;
+        register_file.sreg = register_file.sreg & 0b11101111;
 
     // update overflow flag 0000V000
     bool sign1 = r1 & 0b10000000;
     bool sign2 = r2 & 0b10000000;
     bool sign_result = tmp & 0b10000000;
     if (sign1 == sign2 && sign_result != sign1)
-        register_file.serg = register_file.serg | 0b00001000;
+        register_file.sreg = register_file.sreg | 0b00001000;
     else
-        register_file.serg = register_file.serg & 0b11110111;
+        register_file.sreg = register_file.sreg & 0b11110111;
 
     // update negative flag 00000N00
     if ((tmp & 0b10000000) != 0)
-        register_file.serg = register_file.serg | 0b00000100;
+        register_file.sreg = register_file.sreg | 0b00000100;
     else
-        register_file.serg = register_file.serg & 0b11111011;
+        register_file.sreg = register_file.sreg & 0b11111011;
 
     // update sign flag S=V XOR N 000000S0
-    bool sign_bit = ((register_file.serg & 0b00001000) >> 3) ^ ((register_file.serg & 0b00000100) >> 2);
+    bool sign_bit = ((register_file.sreg & 0b00001000) >> 3) ^ ((register_file.sreg & 0b00000100) >> 2);
     if (sign_bit == 1)
-        register_file.serg = register_file.serg | 0b00000010;
+        register_file.sreg = register_file.sreg | 0b00000010;
     else
-        register_file.serg = register_file.serg & 0b11111101;
+        register_file.sreg = register_file.sreg & 0b11111101;
 
     // update zero flag 0000000Z
     if (tmp == 0)
-        register_file.serg = register_file.serg | 0b00000001;
+        register_file.sreg = register_file.sreg | 0b00000001;
     else
-        register_file.serg = register_file.serg & 0b11111110;
+        register_file.sreg = register_file.sreg & 0b11111110;
 
     // write result to register
     register_file.reg[rd] = tmp;
@@ -258,15 +262,15 @@ void mul(char r1, char r2, char rd)
 
     // update negative flag 00000N00
     if ((tmp & 0b10000000) != 0)
-        register_file.serg = register_file.serg | 0b00000100;
+        register_file.sreg = register_file.sreg | 0b00000100;
     else
-        register_file.serg = register_file.serg & 0b11111011;
+        register_file.sreg = register_file.sreg & 0b11111011;
 
     // update zero flag 0000000Z
     if (tmp == 0)
-        register_file.serg = register_file.serg | 0b00000001;
+        register_file.sreg = register_file.sreg | 0b00000001;
     else
-        register_file.serg = register_file.serg & 0b11111110;
+        register_file.sreg = register_file.sreg & 0b11111110;
 
     // write result to register
     register_file.reg[rd] = tmp;
@@ -278,15 +282,15 @@ void and (char r1, char r2, char rd)
 
     // update negative flag 00000N00
     if ((tmp & 0b10000000) != 0)
-        register_file.serg = register_file.serg | 0b00000100;
+        register_file.sreg = register_file.sreg | 0b00000100;
     else
-        register_file.serg = register_file.serg & 0b11111011;
+        register_file.sreg = register_file.sreg & 0b11111011;
 
     // update zero flag 0000000Z
     if (tmp == 0)
-        register_file.serg = register_file.serg | 0b00000001;
+        register_file.sreg = register_file.sreg | 0b00000001;
     else
-        register_file.serg = register_file.serg & 0b11111110;
+        register_file.sreg = register_file.sreg & 0b11111110;
 
     // write result to register
     register_file.reg[rd] = tmp;
@@ -298,15 +302,15 @@ void or (char r1, char r2, char rd)
 
     // update negative flag 00000N00
     if ((tmp & 0b10000000) != 0)
-        register_file.serg = register_file.serg | 0b00000100;
+        register_file.sreg = register_file.sreg | 0b00000100;
     else
-        register_file.serg = register_file.serg & 0b11111011;
+        register_file.sreg = register_file.sreg & 0b11111011;
 
     // update zero flag 0000000Z
     if (tmp == 0)
-        register_file.serg = register_file.serg | 0b00000001;
+        register_file.sreg = register_file.sreg | 0b00000001;
     else
-        register_file.serg = register_file.serg & 0b11111110;
+        register_file.sreg = register_file.sreg & 0b11111110;
 
     // write result to register
     register_file.reg[rd] = tmp;
@@ -319,15 +323,15 @@ void slc(char r1, char imm, char rd)
 
     // update negative flag 00000N00
     if ((register_file.reg[r1] & 0b10000000) != 0)
-        register_file.serg = register_file.serg | 0b00000100;
+        register_file.sreg = register_file.sreg | 0b00000100;
     else
-        register_file.serg = register_file.serg & 0b11111011;
+        register_file.sreg = register_file.sreg & 0b11111011;
 
     // update zero flag 0000000Z
     if (register_file.reg[r1] == 0)
-        register_file.serg = register_file.serg | 0b00000001;
+        register_file.sreg = register_file.sreg | 0b00000001;
     else
-        register_file.serg = register_file.serg & 0b11111110;
+        register_file.sreg = register_file.sreg & 0b11111110;
 
     // write result to register
     register_file.reg[rd] = tmp;
@@ -339,15 +343,15 @@ void src(char r1, char imm, char rd)
 
     // update negative flag 00000N00
     if ((register_file.reg[r1] & 0b10000000) != 0)
-        register_file.serg = register_file.serg | 0b00000100;
+        register_file.sreg = register_file.sreg | 0b00000100;
     else
-        register_file.serg = register_file.serg & 0b11111011;
+        register_file.sreg = register_file.sreg & 0b11111011;
 
     // update zero flag 0000000Z
     if (register_file.reg[r1] == 0)
-        register_file.serg = register_file.serg | 0b00000001;
+        register_file.sreg = register_file.sreg | 0b00000001;
     else
-        register_file.serg = register_file.serg & 0b11111110;
+        register_file.sreg = register_file.sreg & 0b11111110;
 
     // write result to register
     register_file.reg[rd] = tmp;
@@ -365,8 +369,8 @@ int execute(struct decoded_instruction current_instruction)
     char r2_val = current_instruction.r2_value;
     char rd = current_instruction.r1_address;
     char imm = current_instruction.imm;
-    printf("Instruction executed: \n");
-    print_instruction(current_instruction.instruction);
+    printf("Instruction executed: ");
+    print_instruction(register_file.pc-2);
     // ALU operations
     switch (opcode)
     {
@@ -374,16 +378,25 @@ int execute(struct decoded_instruction current_instruction)
         // R-TYPE - ADD
         add(r1_val, r2_val, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 1:
         // R-TYPE - SUB
         sub(r1_val, r2_val, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 2:
         // R-TYPE - MUL
         mul(r1_val, r2_val, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 3:
         // I-TYPE - LDI
@@ -393,31 +406,49 @@ int execute(struct decoded_instruction current_instruction)
     case 4:
         // I-TYPE - BEQZ
         if (r1_val == 0)
+        {
             register_file.pc = current_instruction.pc_val_for_branch + imm;
+            // print pc
+            printf(">>>> PC branched to: %d\n", register_file.pc);
+        }
         break;
     case 5:
         // R-TYPE - AND
         and(r1_val, r2_val, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 6:
         // R-TYPE - OR
         or (r1_val, r2_val, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 7:
         // R-TYPE - JR
-        register_file.pc = concatenate(r1_val, r2_val);
+        register_file.pc = concatenate(r1_val, r2_val)-1;
+        // print pc
+        printf(">>>> PC jumped to: %d\n", register_file.pc);
         break;
     case 8:
         // I-TYPE - SLC
         slc(r1_val, imm, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 9:
         // I-TYPE - SRC
         src(r1_val, imm, rd);
         printf("R%d value changed to %d.\n", rd, register_file.reg[rd]);
+        // print sreg
+        printf(">>>> Flags:\n");
+        print_flags(register_file.sreg);
         break;
     case 10:
         // I-TYPE - LB
@@ -470,8 +501,22 @@ int main()
     for (int i = 0; i < 64; i++)
     {
         printf("R%d=%d ", i, register_file.reg[i]);
-        if((i>0 && i%8==0) || i==63)
+        if ((i > 0 && i % 8 == 0) || i == 63)
             printf("\n");
     }
+    // print sreg
+    printf(">>>> Flags:\n");
+    print_flags(register_file.sreg);
+
+    // print pc
+    printf(">>>> PC: %d\n", register_file.pc);
+
+    // printf(">>>> Data Memory:\n");
+    // for (int i = 0; i < 2048; i++)
+    // {
+    //     printf("mem[%d]=%d ", i, data_memory[i]);
+    //     if((i>0 && i%8==0) || i==2047)
+    //         printf("\n");
+    // }
     return 0;
 }
