@@ -15,7 +15,6 @@
 #define SRC 9
 #define LB 10
 #define SB 11
-#define END 15
 
 struct register_file
 {
@@ -47,12 +46,10 @@ char data_memory[2048];         // 8 bits per word
 struct register_file register_file;
 int clock_cycles = 1;
 struct previous_clock_cycle previous_clock_cycle;
-bool end = false;
+bool fetched_last_inst = false;
 bool branch = false;
-bool dont_decode = false;
-bool dont_execute = false;
+int ctr_branch=0;
 bool finish = false;
-int clk_cycle_branch;
 int instructions_cnt=0;
 int cnt_to_end=0;
 
@@ -114,9 +111,6 @@ void print_instruction(short instruction)
         break;
     case SB:
         printf("SB R%d %d\n", r1, imm);
-        break;
-    case END:
-        printf("END\n");
         break;
     }
 }
@@ -230,11 +224,9 @@ short fetch()
 {
     short instruction = instruction_memory[register_file.pc++];
     if (register_file.pc == instructions_cnt)
-        end = true;
+        fetched_last_inst = true;
     printf("Instruction fetched: ");
     print_instruction(instruction);
-    // // print pc
-    // printf(">>>> PC incremented to: %d\n", register_file.pc);
     return instruction;
 }
 
@@ -459,7 +451,7 @@ int execute(struct decoded_instruction current_instruction)
         {
             register_file.pc = current_instruction.pc_val_for_branch + imm;
             branch = true;
-            clk_cycle_branch = clock_cycles;
+            ctr_branch=1;
             printf(">>>> PC branched to: %d, branch_flag=%d\n", register_file.pc, branch);
         }
         break;
@@ -484,7 +476,7 @@ int execute(struct decoded_instruction current_instruction)
         register_file.pc = concatenate(r1_val, r2_val);
         // print pc
         branch = true;
-        clk_cycle_branch = clock_cycles;
+        ctr_branch=1;
         printf(">>>> PC jumped to: %d\n", register_file.pc);
         break;
     case 8:
@@ -526,38 +518,29 @@ void next_cycle()
     short old_pc = register_file.pc;
     short pc_after_branch;
     clock_cycles++;
-    printf("\n----------clock_cycle: [%d]----------\n", clock_cycles);
-    if (clock_cycles > 2)
-    {
-        if (!dont_execute)
-        {
-            if (!branch)
-            {
-                execute(previous_clock_cycle.instruction_decoded);
-                pc_after_branch = register_file.pc;
-            }
-            if (branch && (clock_cycles == (clk_cycle_branch + 1)))
-            {
-                branch = 0;
-                dont_decode = true;
-            }
-        }
-        else
-        {
-            dont_execute = false;
-        }
-    }
-    if (!dont_decode && cnt_to_end!=1)
-        previous_clock_cycle.instruction_decoded = decode(previous_clock_cycle.instruction_fetched);
-    else
-    {
-        dont_execute = true;
-        dont_decode = false;
+
+    if(branch){
+        ctr_branch++;
+        if(ctr_branch>3)
+            branch=false;
     }
 
-    if (!end)
+    printf("\n----------clock_cycle: [%d]----------\n",clock_cycles);
+    if (clock_cycles > 2)
     {
-        if (branch)
+        if(!(branch && ctr_branch<=3)){
+            execute(previous_clock_cycle.instruction_decoded);
+            if(branch)
+                pc_after_branch = register_file.pc;
+        }
+    }
+  
+    if(!(branch && ctr_branch==2) && cnt_to_end<1)
+        previous_clock_cycle.instruction_decoded = decode(previous_clock_cycle.instruction_fetched);
+ 
+    if (!fetched_last_inst)
+    {
+        if (branch && ctr_branch==1)
         {
             register_file.pc = old_pc;
             previous_clock_cycle.instruction_fetched = fetch();
@@ -603,7 +586,7 @@ int main()
     printf(">>>> PC: %d\n", register_file.pc);
 
     // print data memory
-    printf(">>>> Data Memory:\n");
+    // printf(">>>> Data Memory:\n");
     // for (int i = 0; i < 2048; i++)
     // {
     //     printf("mem[%d]=%d ", i, data_memory[i]);
