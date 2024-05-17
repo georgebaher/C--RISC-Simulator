@@ -48,6 +48,11 @@ struct register_file register_file;
 int clock_cycles = 1;
 struct previous_clock_cycle previous_clock_cycle;
 bool end = false;
+bool branch = false;
+bool dont_decode = false;
+bool dont_execute = false;
+int clk_cycle_branch;
+int instructions_cnt;
 
 void print_flags(char sreg)
 {
@@ -60,10 +65,58 @@ void print_flags(char sreg)
     printf("C=%d, V=%d, N=%d, S=%d, Z=%d\n", C, V, N, S, Z);
 }
 
-void print_instruction(short pc)
+void print_instruction(short instruction)
 {
-    short instruction = instruction_memory[pc];
-    printf("#%d \n", pc);
+    char opcode = (instruction >> 12) & 0xF;
+    char r1 = (instruction >> 6) & 0x3F;
+    char r2 = (instruction) & 0x3F;
+    char imm = (instruction) & 0x3F;
+    if ((imm & 0b00100000) != 0)
+    {
+        imm = imm | 0b11000000;
+    }
+    switch (opcode)
+    {
+    case ADD:
+        printf("ADD R%d R%d\n", r1, r2);
+        break;
+    case SUB:
+        printf("SUB R%d R%d\n", r1, r2);
+        break;
+    case MUL:
+        printf("MUL R%d R%d\n", r1, r2);
+        break;
+    case LDI:
+        printf("LDI R%d %d\n", r1, imm);
+        break;
+    case BEQZ:
+        printf("BEQZ R%d %d\n", r1, imm);
+        break;
+    case AND:
+        printf("AND R%d R%d\n", r1, r2);
+        break;
+    case OR:
+        printf("OR R%d R%d\n", r1, r2);
+        break;
+    case JR:
+        printf("JR R%d R%d\n", r1, r2);
+        break;
+    case SLC:
+        printf("SLC R%d %d\n", r1, imm);
+        break;
+    case SRC:
+        printf("SRC R%d %d\n", r1, imm);
+        break;
+    case LB:
+        printf("LB R%d %d\n", r1, imm);
+        break;
+    case SB:
+        printf("SB R%d %d\n", r1, imm);
+        break;
+    case END:
+        printf("END\n");
+        break;
+    }
 }
 
 char str_opcode_to_char(char *op)
@@ -164,14 +217,15 @@ int parse_program_file_to_inst_mem()
             }
             else if (i == 1)
             {
-                char x=atoi(splitString);
-                instruction = instruction | x&0b000000000000111111;
+                char x = atoi(splitString);
+                instruction = instruction | x & 0b000000000000111111;
+                ;
             }
             i++;
         }
 
         instruction_memory[ctr] = instruction;
-        printf("instruction_memory[%d]: %d\n", ctr, instruction_memory[ctr]);
+        // printf("instruction_memory[%d]: %d\n", ctr, instruction_memory[ctr]);
         ctr++;
     }
 
@@ -183,9 +237,9 @@ short fetch()
 {
     short instruction = instruction_memory[register_file.pc++];
     printf("Instruction fetched: ");
-    print_instruction(register_file.pc-1);
-    // print pc
-    printf(">>>> PC incremented to: %d\n", register_file.pc);
+    print_instruction(instruction);
+    // // print pc
+    // printf(">>>> PC incremented to: %d\n", register_file.pc);
     return instruction;
 }
 
@@ -193,7 +247,7 @@ struct decoded_instruction decode(short instruction)
 {
     struct decoded_instruction current_instruction;
     printf("Instruction decoded: ");
-    print_instruction(register_file.pc-1);
+    print_instruction(instruction);
     current_instruction.instruction = instruction;
     current_instruction.opcode = (instruction >> 12) & 0xF;
     if (current_instruction.opcode == 15)
@@ -203,7 +257,8 @@ struct decoded_instruction decode(short instruction)
     current_instruction.r2_address = (instruction) & 0x3F;
     current_instruction.r2_value = register_file.reg[current_instruction.r2_address];
     current_instruction.imm = (instruction) & 0x3F;
-    if((current_instruction.imm&0b00100000) !=0){
+    if ((current_instruction.imm & 0b00100000) != 0)
+    {
         current_instruction.imm = current_instruction.imm | 0b11000000;
     }
     current_instruction.pc_val_for_branch = register_file.pc;
@@ -321,7 +376,7 @@ void or (char r1, char r2, char rd)
 void slc(char r1, char imm, char rd)
 {
 
-    char tmp = r1 << imm;
+    char tmp = r1 << imm | r1 >> (8 - imm);
 
     // update negative flag 00000N00
     if ((register_file.reg[r1] & 0b10000000) != 0)
@@ -341,7 +396,7 @@ void slc(char r1, char imm, char rd)
 
 void src(char r1, char imm, char rd)
 {
-    char tmp = r1 >> imm;
+    char tmp = r1 >> imm | r1 << (8 - imm);
 
     // update negative flag 00000N00
     if ((register_file.reg[r1] & 0b10000000) != 0)
@@ -372,7 +427,7 @@ int execute(struct decoded_instruction current_instruction)
     char rd = current_instruction.r1_address;
     char imm = current_instruction.imm;
     printf("Instruction executed: ");
-    print_instruction(register_file.pc-2);
+    print_instruction(current_instruction.instruction);
     // ALU operations
     switch (opcode)
     {
@@ -410,8 +465,9 @@ int execute(struct decoded_instruction current_instruction)
         if (r1_val == 0)
         {
             register_file.pc = current_instruction.pc_val_for_branch + imm;
-            // print pc
-            printf(">>>> PC branched to: %d\n", register_file.pc);
+            branch = true;
+            clk_cycle_branch = clock_cycles;
+            printf(">>>> PC branched to: %d, branch_flag=%d\n", register_file.pc, branch);
         }
         break;
     case 5:
@@ -432,8 +488,10 @@ int execute(struct decoded_instruction current_instruction)
         break;
     case 7:
         // R-TYPE - JR
-        register_file.pc = concatenate(r1_val, r2_val)-1;
+        register_file.pc = concatenate(r1_val, r2_val);
         // print pc
+        branch = true;
+        clk_cycle_branch = clock_cycles;
         printf(">>>> PC jumped to: %d\n", register_file.pc);
         break;
     case 8:
@@ -475,16 +533,50 @@ int execute(struct decoded_instruction current_instruction)
 
 void next_cycle()
 {
+    short old_pc = register_file.pc;
+    short pc_after_branch;
     clock_cycles++;
     printf("\n----------clock_cycle: [%d]----------\n", clock_cycles);
     if (clock_cycles > 2)
     {
-        execute(previous_clock_cycle.instruction_decoded);
+        if (!dont_execute)
+        {
+            if (!branch)
+            {
+                execute(previous_clock_cycle.instruction_decoded);
+                pc_after_branch = register_file.pc;
+            }
+            if (branch && (clock_cycles == (clk_cycle_branch + 1)))
+            {
+                branch = 0;
+                dont_decode = true;
+            }
+        }
+        else
+        {
+            dont_execute = false;
+        }
     }
-    previous_clock_cycle.instruction_decoded = decode(previous_clock_cycle.instruction_fetched);
+    if (!dont_decode)
+        previous_clock_cycle.instruction_decoded = decode(previous_clock_cycle.instruction_fetched);
+    else
+    {
+        dont_execute = true;
+        dont_decode = false;
+    }
+
     if (!end)
     {
-        previous_clock_cycle.instruction_fetched = fetch();
+        if (branch)
+        {
+            register_file.pc = old_pc;
+            previous_clock_cycle.instruction_fetched = fetch();
+            register_file.pc = pc_after_branch;
+        }
+        else
+        {
+            previous_clock_cycle.instruction_fetched = fetch();
+        }
     }
 }
 
@@ -514,12 +606,13 @@ int main()
     // print pc
     printf(">>>> PC: %d\n", register_file.pc);
 
-    // printf(">>>> Data Memory:\n");
+    // print data memory
+    printf(">>>> Data Memory:\n");
     // for (int i = 0; i < 2048; i++)
     // {
     //     printf("mem[%d]=%d ", i, data_memory[i]);
     //     if((i>0 && i%8==0) || i==2047)
     //         printf("\n");
     // }
-    return 0;
+    // return 0;
 }
