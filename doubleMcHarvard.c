@@ -63,10 +63,7 @@ void print_flags(char sreg)
 void print_instruction(short pc)
 {
     short instruction = instruction_memory[pc];
-    printf("#%d \n", pc+1);
-    // printf("opcode=%d, ", (instruction & 0xF000) >> 12);
-    // printf("r1=%d, ", (instruction & 0x0FC0) >> 6);
-    // printf("r2/imm=%d\n", instruction & 0x003F);
+    printf("#%d \n", pc);
 }
 
 char str_opcode_to_char(char *op)
@@ -162,17 +159,19 @@ int parse_program_file_to_inst_mem()
             splitString = strtok(NULL, " ");
             if (i == 0)
             {
-                instruction = instruction | (short)atoi(splitString) << 6;
+                char reg = atoi(splitString);
+                instruction = instruction | reg << 6;
             }
             else if (i == 1)
             {
-                instruction = instruction | (short)atoi(splitString);
+                char x=atoi(splitString);
+                instruction = instruction | x&0b000000000000111111;
             }
             i++;
         }
 
-        // print_instruction(instruction);
         instruction_memory[ctr] = instruction;
+        printf("instruction_memory[%d]: %d\n", ctr, instruction_memory[ctr]);
         ctr++;
     }
 
@@ -204,6 +203,9 @@ struct decoded_instruction decode(short instruction)
     current_instruction.r2_address = (instruction) & 0x3F;
     current_instruction.r2_value = register_file.reg[current_instruction.r2_address];
     current_instruction.imm = (instruction) & 0x3F;
+    if((current_instruction.imm&0b00100000) !=0){
+        current_instruction.imm = current_instruction.imm | 0b11000000;
+    }
     current_instruction.pc_val_for_branch = register_file.pc;
     return current_instruction;
 }
@@ -487,6 +489,7 @@ void next_cycle()
 }
 
 int main()
+
 {
     parse_program_file_to_inst_mem();
     register_file.pc = 0;

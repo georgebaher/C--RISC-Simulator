@@ -1,6 +1,2 @@
-LDI 0 0
-LDI 1 5
-JR 0 1
-LDI 1 10
-LDI 1 15
+LDI 0 -32
 END
