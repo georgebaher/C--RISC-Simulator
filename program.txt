@@ -9,4 +9,3 @@ LDI 2 3
 LDI 2 4
 LDI 2 5
 LDI 2 6
-END

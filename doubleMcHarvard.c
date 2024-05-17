@@ -51,8 +51,10 @@ bool end = false;
 bool branch = false;
 bool dont_decode = false;
 bool dont_execute = false;
+bool finish = false;
 int clk_cycle_branch;
-int instructions_cnt;
+int instructions_cnt=0;
+int cnt_to_end=0;
 
 void print_flags(char sreg)
 {
@@ -169,10 +171,6 @@ char str_opcode_to_char(char *op)
     {
         return SB;
     }
-    else if (strcmp(op, "END") == 0)
-    {
-        return END;
-    }
     else
     {
         printf("str_opcode_to_char: Invalid opcode\n");
@@ -197,12 +195,6 @@ int parse_program_file_to_inst_mem()
     while (fgets(buffer, MAX_LENGTH, fp))
     {
         short instruction;
-        if (strcmp(buffer, "END") == 0)
-        {
-            instruction = 0xF000;
-            instruction_memory[ctr] = instruction;
-            return 0;
-        }
         char *splitString = strtok(buffer, " ");
         char opcode = str_opcode_to_char(splitString);
         instruction = opcode << 12;
@@ -225,6 +217,7 @@ int parse_program_file_to_inst_mem()
         }
 
         instruction_memory[ctr] = instruction;
+        instructions_cnt++;
         // printf("instruction_memory[%d]: %d\n", ctr, instruction_memory[ctr]);
         ctr++;
     }
@@ -236,6 +229,8 @@ int parse_program_file_to_inst_mem()
 short fetch()
 {
     short instruction = instruction_memory[register_file.pc++];
+    if (register_file.pc == instructions_cnt)
+        end = true;
     printf("Instruction fetched: ");
     print_instruction(instruction);
     // // print pc
@@ -250,8 +245,6 @@ struct decoded_instruction decode(short instruction)
     print_instruction(instruction);
     current_instruction.instruction = instruction;
     current_instruction.opcode = (instruction >> 12) & 0xF;
-    if (current_instruction.opcode == 15)
-        end = true;
     current_instruction.r1_address = (instruction >> 6) & 0x3F;
     current_instruction.r1_value = register_file.reg[current_instruction.r1_address];
     current_instruction.r2_address = (instruction) & 0x3F;
@@ -520,9 +513,6 @@ int execute(struct decoded_instruction current_instruction)
         data_memory[imm] = r1_val;
         printf("mem[%d] value changed to %d.\n", imm, r1_val);
         break;
-    case 15:
-        // END
-        break;
     default:
         printf("INVALID OPCODE\n");
         break;
@@ -557,7 +547,7 @@ void next_cycle()
             dont_execute = false;
         }
     }
-    if (!dont_decode)
+    if (!dont_decode && cnt_to_end!=1)
         previous_clock_cycle.instruction_decoded = decode(previous_clock_cycle.instruction_fetched);
     else
     {
@@ -578,6 +568,12 @@ void next_cycle()
             previous_clock_cycle.instruction_fetched = fetch();
         }
     }
+    else{
+        cnt_to_end++;
+        if(cnt_to_end==2){
+            finish=true;
+        }
+    }
 }
 
 int main()
@@ -587,7 +583,7 @@ int main()
     register_file.pc = 0;
     printf("\n----------clock_cycle: [%d]----------\n", clock_cycles);
     previous_clock_cycle.instruction_fetched = fetch();
-    while (!end)
+    while (!finish)
     {
         next_cycle();
     }
