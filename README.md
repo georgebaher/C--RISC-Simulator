@@ -2,21 +2,21 @@
 Welcome to the RISC-like Processor Simulator! This project is a fun and educational implementation of a simple Reduced Instruction Set Computing (RISC) processor in C. The simulator can parse, decode, and execute instructions from a given program file, simulating a basic CPU's functionality. It includes various RISC operations such as arithmetic, logical, and branch instructions, providing a clear understanding of how a RISC processor works.
 
 ## Features
-**16-bit Instruction Set:** Supports a variety of instructions including ADD, SUB, MUL, LDI, BEQZ, AND, OR, JR, SLC, SRC, LB, and SB.
-**Register File:** Simulates a register file with 64 registers, each 8 bits wide.
-**Instruction Memory:** Holds up to 1024 instructions.
-**Data Memory:** Provides 2048 bytes of data memory.
-**Status Register:** Tracks the condition flags (C, V, N, S, Z) for arithmetic operations.
-**Program Counter:** Manages the flow of instruction execution.
-**Instruction Decoding and Execution:** Decodes and executes instructions fetched from memory.
-**Cycle Management:** The simulator advances through clock cycles, managing instruction fetch, decode, and execute stages, including handling branches.
-**Pipelining:** Supports instruction pipelining to improve execution efficiency.
+**16-bit Instruction Set:** Supports a variety of instructions including ADD, SUB, MUL, LDI, BEQZ, AND, OR, JR, SLC, SRC, LB, and SB.\
+**Register File:** Simulates a register file with 64 registers, each 8 bits wide.\
+**Instruction Memory:** Holds up to 1024 instructions.\
+**Data Memory:** Provides 2048 bytes of data memory.\
+**Status Register:** Tracks the condition flags (C, V, N, S, Z) for arithmetic operations.\
+**Program Counter:** Manages the flow of instruction execution.\
+**Instruction Decoding and Execution:** Decodes and executes instructions fetched from memory.\
+**Cycle Management:** The simulator advances through clock cycles, managing instruction fetch, decode, and execute stages, including handling branches.\
+**Pipelining:** Supports instruction pipelining to improve execution efficiency.\
 **Data Hazard Handling:** Detects and handles data hazards during instruction execution to ensure correct program operation.
 
 ## How It Works
-**Instruction Fetch:** The program counter (PC) fetches the next instruction from instruction memory.
-**Instruction Decode:** The fetched instruction is decoded to determine the operation and operands.
-**Instruction Execute:** The decoded instruction is executed, updating the registers and condition flags.
+**Instruction Fetch:** The program counter (PC) fetches the next instruction from instruction memory.\
+**Instruction Decode:** The fetched instruction is decoded to determine the operation and operands.\
+**Instruction Execute:** The decoded instruction is executed, updating the registers and condition flags.\
 **Cycle Management:** The simulator advances through clock cycles, managing instruction fetch, decode, and execute stages, including handling branches and data hazards.
 
 ## Example Usage
